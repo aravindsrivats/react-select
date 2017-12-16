@@ -26,3 +26,24 @@ bower_components
 .DS_Store
 
 yarn.lock
+
+examples
+src
+test*
+.babelrc
+.coveralls.yml
+.editorconfig
+.eslintignore
+.eslintrc.js
+.gitattributes
+.nvmrc
+.nycrc
+.travis.yml
+bower.json
+CONTRIBUTING.md
+ISSUE_TEMPLATE.md
+package-lock.json
+package-scripts.js
+rollup.config.js
+wallaby.js
+webpack.config.js

@@ -35,6 +35,10 @@ function trim(str) {
     return str.replace(/^\s+|\s+$/g, '');
 }
 
+function isValid(value) {
+	return typeof value !== 'undefined' && value !== null && value !== '';
+}
+
 function filterOptions(options, filterValue, excludeOptions, props) {
 	var _this = this;
 
@@ -58,19 +62,30 @@ function filterOptions(options, filterValue, excludeOptions, props) {
 		if (excludeOptions && excludeOptions.indexOf(option[props.valueKey]) > -1) return false;
 		if (props.filterOption) return props.filterOption.call(_this, option, filterValue);
 		if (!filterValue) return true;
-		var valueTest = String(option[props.valueKey]);
-		var labelTest = String(option[props.labelKey]);
+
+		var value = option[props.valueKey];
+		var label = option[props.labelKey];
+		var hasValue = isValid(value);
+		var hasLabel = isValid(label);
+
+		if (!hasValue && !hasLabel) {
+			return false;
+		}
+
+		var valueTest = hasValue ? String(value) : null;
+		var labelTest = hasLabel ? String(label) : null;
 
 		if (props.ignoreAccents) {
-			if (props.matchProp !== 'label') valueTest = stripDiacritics(valueTest);
-			if (props.matchProp !== 'value') labelTest = stripDiacritics(labelTest);
+			if (valueTest && props.matchProp !== 'label') valueTest = stripDiacritics(valueTest);
+			if (labelTest && props.matchProp !== 'value') labelTest = stripDiacritics(labelTest);
 		}
 
 		if (props.ignoreCase) {
-			if (props.matchProp !== 'label') valueTest = valueTest.toLowerCase();
-			if (props.matchProp !== 'value') labelTest = labelTest.toLowerCase();
+			if (valueTest && props.matchProp !== 'label') valueTest = valueTest.toLowerCase();
+			if (labelTest && props.matchProp !== 'value') labelTest = labelTest.toLowerCase();
 		}
-		return props.matchPos === 'start' ? props.matchProp !== 'label' && valueTest.substr(0, filterValue.length) === filterValue || props.matchProp !== 'value' && labelTest.substr(0, filterValue.length) === filterValue : props.matchProp !== 'label' && valueTest.indexOf(filterValue) >= 0 || props.matchProp !== 'value' && labelTest.indexOf(filterValue) >= 0;
+
+		return props.matchPos === 'start' ? valueTest && props.matchProp !== 'label' && valueTest.substr(0, filterValue.length) === filterValue || labelTest && props.matchProp !== 'value' && labelTest.substr(0, filterValue.length) === filterValue : valueTest && props.matchProp !== 'label' && valueTest.indexOf(filterValue) >= 0 || labelTest && props.matchProp !== 'value' && labelTest.indexOf(filterValue) >= 0;
 	});
 }
 
@@ -687,6 +702,10 @@ var Select$1 = function (_React$Component) {
 				// Used to be required but it's not any more
 				this.setState({ required: false });
 			}
+
+			if (this.state.inputValue && this.props.value !== nextProps.value && this.props.onSelectResetsInput) {
+				this.setState({ inputValue: this.handleInputValueChange('') });
+			}
 		}
 	}, {
 		key: 'componentDidUpdate',
@@ -834,6 +853,7 @@ var Select$1 = function (_React$Component) {
 						isPseudoFocused: false
 					});
 				}
+
 				return;
 			}
 
@@ -856,6 +876,8 @@ var Select$1 = function (_React$Component) {
 				this.focus();
 
 				var input = this.input;
+				var toOpen = true;
+
 				if (typeof input.getInput === 'function') {
 					// Get the actual DOM input if the ref is an <AutosizeInput /> component
 					input = input.getInput();
@@ -864,9 +886,14 @@ var Select$1 = function (_React$Component) {
 				// clears the value so that the cursor will be at the end of input when the component re-renders
 				input.value = '';
 
+				if (this._focusAfterClear) {
+					toOpen = false;
+					this._focusAfterClear = false;
+				}
+
 				// if the input is focused, ensure the menu is open
 				this.setState({
-					isOpen: true,
+					isOpen: toOpen,
 					isPseudoFocused: false
 				});
 			} else {
@@ -883,18 +910,18 @@ var Select$1 = function (_React$Component) {
 			if (this.props.disabled || event.type === 'mousedown' && event.button !== 0) {
 				return;
 			}
-			// If the menu isn't open, let the event bubble to the main handleMouseDown
-			if (!this.state.isOpen) {
+
+			if (this.state.isOpen) {
+				// prevent default event handlers
+				event.stopPropagation();
+				event.preventDefault();
+				// close the menu
+				this.closeMenu();
+			} else {
+				// If the menu isn't open, let the event bubble to the main handleMouseDown
 				this.setState({
 					isOpen: true
 				});
-			}
-			// prevent default event handlers
-			event.stopPropagation();
-			event.preventDefault();
-			// close the menu
-			if (this.state.isOpen) {
-				this.closeMenu();
 			}
 		}
 	}, {
@@ -905,6 +932,7 @@ var Select$1 = function (_React$Component) {
 			if (this.props.disabled || event.type === 'mousedown' && event.button !== 0) {
 				return;
 			}
+
 			event.stopPropagation();
 			event.preventDefault();
 
@@ -932,15 +960,21 @@ var Select$1 = function (_React$Component) {
 		key: 'handleInputFocus',
 		value: function handleInputFocus(event) {
 			if (this.props.disabled) return;
-			var isOpen = this.state.isOpen || this._openAfterFocus || this.props.openOnFocus;
+
+			var toOpen = this.state.isOpen || this._openAfterFocus || this.props.openOnFocus;
+			toOpen = this._focusAfterClear ? false : toOpen; //if focus happens after clear values, don't open dropdown yet.
+
 			if (this.props.onFocus) {
 				this.props.onFocus(event);
 			}
+
 			this.setState({
 				isFocused: true,
-				isOpen: isOpen
+				isOpen: toOpen
 			});
+
 			this._openAfterFocus = false;
+			this._focusAfterClear = false;
 		}
 	}, {
 		key: 'handleInputBlur',
@@ -1205,8 +1239,8 @@ var Select$1 = function (_React$Component) {
 			if (this.props.closeOnSelect) {
 				this.hasScrolledToOption = false;
 			}
+			var updatedValue = this.props.onSelectResetsInput ? '' : this.state.inputValue;
 			if (this.props.multi) {
-				var updatedValue = this.props.onSelectResetsInput ? '' : this.state.inputValue;
 				this.setState({
 					focusedIndex: null,
 					inputValue: this.handleInputValueChange(updatedValue),
@@ -1223,7 +1257,7 @@ var Select$1 = function (_React$Component) {
 				});
 			} else {
 				this.setState({
-					inputValue: this.handleInputValueChange(''),
+					inputValue: this.handleInputValueChange(updatedValue),
 					isOpen: !this.props.closeOnSelect,
 					isPseudoFocused: this.state.isFocused
 				}, function () {
@@ -1275,12 +1309,16 @@ var Select$1 = function (_React$Component) {
 			if (event && event.type === 'mousedown' && event.button !== 0) {
 				return;
 			}
+
 			event.preventDefault();
+
 			this.setValue(this.getResetValue());
 			this.setState({
 				isOpen: false,
 				inputValue: this.handleInputValueChange('')
 			}, this.focus);
+
+			this._focusAfterClear = true;
 		}
 	}, {
 		key: 'getResetValue',
@@ -1440,7 +1478,8 @@ var Select$1 = function (_React$Component) {
 							key: 'value-' + i + '-' + value[_this6.props.valueKey],
 							onClick: onClick,
 							onRemove: _this6.removeValue,
-							value: value
+							value: value,
+							placeholder: _this6.props.placeholder
 						},
 						renderLabel(value, i),
 						React__default.createElement(
@@ -1459,7 +1498,8 @@ var Select$1 = function (_React$Component) {
 						disabled: this.props.disabled,
 						instancePrefix: this._instancePrefix,
 						onClick: onClick,
-						value: valueArray[0]
+						value: valueArray[0],
+						placeholder: this.props.placeholder
 					},
 					renderLabel(valueArray[0])
 				);
@@ -2188,7 +2228,7 @@ var CreatableSelect = function (_React$Component) {
 
 			if (isValidNewOption({ label: this.inputValue })) {
 				var option = newOptionCreator({ label: this.inputValue, labelKey: this.labelKey, valueKey: this.valueKey });
-				var _isOptionUnique = this.isOptionUnique({ option: option });
+				var _isOptionUnique = this.isOptionUnique({ option: option, options: options });
 
 				// Don't add the same option twice.
 				if (_isOptionUnique) {
@@ -2382,6 +2422,10 @@ function isOptionUnique(_ref3) {
 	    options = _ref3.options,
 	    labelKey = _ref3.labelKey,
 	    valueKey = _ref3.valueKey;
+
+	if (!options || !options.length) {
+		return true;
+	}
 
 	return options.filter(function (existingOption) {
 		return existingOption[labelKey] === option[labelKey] || existingOption[valueKey] === option[valueKey];
